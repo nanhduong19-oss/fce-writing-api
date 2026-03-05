@@ -1,5 +1,6 @@
+// BẮT BUỘC CÓ DÒNG NÀY ĐỂ PHÁ VỠ GIỚI HẠN 10 GIÂY CỦA VERCEL
 export const config = {
-  runtime: 'edge', // BẮT BUỘC ĐỂ PHÁ GIỚI HẠN 10 GIÂY CỦA VERCEL
+  runtime: 'edge',
 };
 
 const corsHeaders = {
@@ -22,6 +23,7 @@ export default async function handler(req) {
   }
 
   try {
+    // Trong môi trường Edge, bắt buộc dùng req.json() thay vì req.body
     const body = await req.json();
     const { studentSubmission } = body;
     const apiKey = process.env.GEMINI_API_KEY;
@@ -33,20 +35,7 @@ export default async function handler(req) {
       });
     }
 
-  // 2. Lấy dữ liệu bài làm của học sinh từ Request
-  let studentSubmission;
-  try {
-    const body = await req.json();
-    studentSubmission = body.studentSubmission;
-  } catch (e) {
-    return new Response(
-      JSON.stringify({ error: 'Dữ liệu đầu vào không hợp lệ.' }),
-      { status: 400, headers: { 'content-type': 'application/json' } }
-    );
-  }
-
-  // 3. ĐÂY LÀ "LINH HỒN" CỦA API - System Prompt cho FCE
-  const systemPrompt = `# ROLE AND TASK
+    const systemPrompt = `# ROLE AND TASK
 You are an expert Cambridge B2 First (FCE) Writing Examiner.
 Your task is to grade TWO writing tasks from a candidate:
 - Part 1: Essay (compulsory)
@@ -137,46 +126,41 @@ Bạn PHẢI trả về ĐÚNG định dạng JSON sau để hệ thống parse 
 }
 If "No answer provided", give 0s and explain in Vietnamese.`;
 
+}`;
 
-  try {
-    // 4. Gọi API Gemini 1.5 Flash (Sử dụng model ổn định cho Edge)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    // ĐÃ NÂNG CẤP LÊN GEMINI 2.5 FLASH GIỐNG PET
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: studentSubmission }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: { 
-            responseMimeType: "application/json",
-            temperature: 0.7 
-        } 
+        generationConfig: { responseMimeType: "application/json" } 
       })
     });
 
     const data = await response.json();
     
     if (!response.ok) {
-        return new Response(
-          JSON.stringify({ error: data.error?.message || 'Lỗi từ Gemini' }),
-          { status: response.status, headers: { 'content-type': 'application/json' } }
-        );
+        return new Response(JSON.stringify({ error: data.error?.message || 'Lỗi từ Gemini API' }), { 
+          status: response.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
     }
 
-    // 5. Xử lý chuỗi JSON trả về
+    // Bóc tách Markdown JSON rác
     let resultString = data.candidates[0].content.parts[0].text;
-    // Làm sạch chuỗi nếu AI trả về kèm ký tự markdown
     resultString = resultString.replace(/```json/gi, '').replace(/```/gi, '').trim();
     
     return new Response(resultString, {
       status: 200,
-      headers: { 'content-type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
-    console.error('Lỗi server:', error);
-    return new Response(
-      JSON.stringify({ error: 'Lỗi Internal Server. Vui lòng thử lại sau.' }),
-      { status: 500, headers: { 'content-type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: `Lỗi Server Vercel: ${error.message}` }), { 
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 }
