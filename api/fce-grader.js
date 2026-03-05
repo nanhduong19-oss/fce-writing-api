@@ -1,32 +1,36 @@
 export const config = {
-  runtime: 'edge', // BẮT BUỘC ĐỂ PHÁ VỠ GIỚI HẠN 10 GIÂY CỦA VERCEL
+  runtime: 'edge', // BẮT BUỘC ĐỂ PHÁ GIỚI HẠN 10 GIÂY CỦA VERCEL
+};
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
+  'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
 };
 
 export default async function handler(req) {
-  // Xử lý CORS trong Edge Runtime
+  // Xử lý CORS Preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
-        'Access-Control-Allow-Headers': 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version',
-      },
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });
+    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { 
+      status: 405, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 
   try {
-    // Trong Edge runtime, phải dùng req.json() thay vì req.body
     const body = await req.json();
     const { studentSubmission } = body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'Thiếu GEMINI_API_KEY' }), { status: 500 });
+      return new Response(JSON.stringify({ error: 'LỖI: Chưa cấu hình GEMINI_API_KEY trên Vercel.' }), { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
     }
 
   // 2. Lấy dữ liệu bài làm của học sinh từ Request
