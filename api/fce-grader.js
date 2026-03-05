@@ -1,9 +1,32 @@
-// ... existing code ...
+// 1. Kích hoạt Edge Runtime để phá bỏ giới hạn 10 giây của Vercel
+export const config = {
+  runtime: 'edge',
+};
+
+export default async function handler(req) {
+  // Lấy API Key từ biến môi trường của Vercel
+  const apiKey = process.env.GEMINI_API_KEY;
+
   if (!apiKey) {
-    return res.status(500).json({ error: 'Thiếu GEMINI_API_KEY trên Vercel.' });
+    return new Response(
+      JSON.stringify({ error: 'Thiếu GEMINI_API_KEY trên Vercel.' }),
+      { status: 500, headers: { 'content-type': 'application/json' } }
+    );
   }
 
-  // 3. ĐÂY LÀ "LINH HỒN" CỦA API - Đã chuẩn hóa JSON format giống app PET
+  // 2. Lấy dữ liệu bài làm của học sinh từ Request
+  let studentSubmission;
+  try {
+    const body = await req.json();
+    studentSubmission = body.studentSubmission;
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: 'Dữ liệu đầu vào không hợp lệ.' }),
+      { status: 400, headers: { 'content-type': 'application/json' } }
+    );
+  }
+
+  // 3. ĐÂY LÀ "LINH HỒN" CỦA API - System Prompt cho FCE
   const systemPrompt = `# ROLE AND TASK
 You are an expert Cambridge B2 First (FCE) Writing Examiner.
 Your task is to grade TWO writing tasks from a candidate:
@@ -95,31 +118,46 @@ Bạn PHẢI trả về ĐÚNG định dạng JSON sau để hệ thống parse 
 }
 If "No answer provided", give 0s and explain in Vietnamese.`;
 
+
   try {
-    //ĐÃ NÂNG CẤP LÊN GEMINI 2.5 FLASH
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    // 4. Gọi API Gemini 1.5 Flash (Sử dụng model ổn định cho Edge)
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: studentSubmission }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: { responseMimeType: "application/json" } 
+        generationConfig: { 
+            responseMimeType: "application/json",
+            temperature: 0.7 
+        } 
       })
     });
 
     const data = await response.json();
     
     if (!response.ok) {
-        return res.status(response.status).json({ error: data.error?.message || 'Lỗi từ Gemini' });
+        return new Response(
+          JSON.stringify({ error: data.error?.message || 'Lỗi từ Gemini' }),
+          { status: response.status, headers: { 'content-type': 'application/json' } }
+        );
     }
 
+    // 5. Xử lý chuỗi JSON trả về
     let resultString = data.candidates[0].content.parts[0].text;
+    // Làm sạch chuỗi nếu AI trả về kèm ký tự markdown
     resultString = resultString.replace(/```json/gi, '').replace(/```/gi, '').trim();
     
-    const finalJson = JSON.parse(resultString);
-    res.status(200).json(finalJson);
+    return new Response(resultString, {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    });
+
   } catch (error) {
     console.error('Lỗi server:', error);
-    res.status(500).json({ error: 'Lỗi Internal Server. Vui lòng thử lại sau.' });
+    return new Response(
+      JSON.stringify({ error: 'Lỗi Internal Server. Vui lòng thử lại sau.' }),
+      { status: 500, headers: { 'content-type': 'application/json' } }
+    );
   }
 }
