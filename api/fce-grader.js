@@ -96,14 +96,13 @@ Bạn PHẢI trả về ĐÚNG định dạng JSON sau để hệ thống parse 
 If "No answer provided", give 0s and explain in Vietnamese.`;
 
   try {
-    // Gọi API của Gemini bằng model 1.5 Flash (nhanh và rẻ nhất cho tác vụ này)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    //ĐÃ NÂNG CẤP LÊN GEMINI 2.5 FLASH
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: studentSubmission }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        // Ép Gemini phải trả về đúng chuẩn JSON
         generationConfig: { responseMimeType: "application/json" } 
       })
     });
@@ -114,16 +113,13 @@ If "No answer provided", give 0s and explain in Vietnamese.`;
         return res.status(response.status).json({ error: data.error?.message || 'Lỗi từ Gemini' });
     }
 
-    // Bóc tách Markdown (```json ... ```) an toàn trên Server nếu Gemini trả về kèm text rác
     let resultString = data.candidates[0].content.parts[0].text;
     resultString = resultString.replace(/```json/gi, '').replace(/```/gi, '').trim();
     
     const finalJson = JSON.parse(resultString);
-
     res.status(200).json(finalJson);
   } catch (error) {
     console.error('Lỗi server:', error);
     res.status(500).json({ error: 'Lỗi Internal Server. Vui lòng thử lại sau.' });
   }
 }
-// ... existing code ...
